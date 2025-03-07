@@ -20,6 +20,10 @@ void   thrFunc ( int * data, int n )
 {
 #ifdef SELECT_SORT
   /* razeni algoritmem select sort */
+  /* prace pro dva thready: w(2) = 2((n/2)^2 + 2n) ... tedy tedka to je vicemene polovicni*/
+  /* T(t=2) = w(2)/2 ... n^2 / 4 + 2n*/
+  /* w(64) = 64((n/64)^2) +  64n */
+  /* T(t=64) = (n^2 / 64)/2 + 64n = n^2 / 128 + 64n */
   for ( int i = 0; i < n; i ++ )
   {
     int min = i;
@@ -29,6 +33,7 @@ void   thrFunc ( int * data, int n )
     swap ( data[i], data[min] );
   }
 #else /* SELECT_SORT */
+  /* tady pak po 64 jadrech vysledek naopak horsi - kazda instrukce o neco delsi, protoze se pere s ostatnimi vlakny */
   sort ( data, data + n, [] ( const int a, const int b ) { return a < b; } );
 #endif /* SELECT_SORT */
 }

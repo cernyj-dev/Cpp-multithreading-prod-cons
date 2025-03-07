@@ -27,8 +27,8 @@ param_pt_02: param_pt_02.c
 hello_01: hello_01.cpp
 	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
 
-hello_02: hello_02.cpp
-	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
+#hello_02: hello_02.cpp
+#	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
 
 detach_01: detach_01.cpp
 	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
@@ -43,6 +43,9 @@ sum_01: sum_01.cpp
 	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
 
 sum_02: sum_02.cpp
+	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
+
+task1: task1.cpp
 	$(CXX) -std=c++11 $(CXXFLAGS) -o $@ $< $(LIBS)
 
 clean:
