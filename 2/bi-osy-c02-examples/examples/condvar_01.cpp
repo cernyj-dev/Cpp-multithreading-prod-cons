@@ -44,7 +44,7 @@ public:
     unique_lock<mutex> ul (g_Mtx2);
     g_Cond2.notify_all();
     g_Cond1.wait(ul, [this]{ return g_Cnt >= 50000; });
-    cout << "Thread:  counter = " << g_Cnt << endl;
+    cout << "Thread1:  counter = " << g_Cnt << endl;
   }
 
   /*************************************/
@@ -67,7 +67,7 @@ public:
 
     ul.lock();
     g_Cond1.notify_all();
-    cout << "Thread:  counter = " << g_Cnt << endl;
+    cout << "Thread2:  counter = " << g_Cnt << endl;
   }
 };
 
