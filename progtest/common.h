@@ -8,101 +8,74 @@
 #include <vector>
 #include <memory>
 //=============================================================================================================================================================
-class CProd
-{
+class CProd{
   public:
-                                       CProd                                   ( unsigned                              w,
-                                                                                 unsigned                              h,
-                                                                                 double                                cost )
-      : m_W ( w ),
-        m_H ( h ),
-        m_Cost ( cost )
-    {
-    }
+    unsigned m_W;
+    unsigned m_H;
+    double m_Cost;
 
-    unsigned                           m_W;
-    unsigned                           m_H;
-    double                             m_Cost;
+    CProd(unsigned w, unsigned h, double cost): m_W(w), m_H(h), m_Cost(cost){}
 };
 //=============================================================================================================================================================
-class CPriceList
-{
+class CPriceList{
   public:
-                                       CPriceList                              ( unsigned                              materialID )
-      : m_MaterialID ( materialID )
-    {
-    }
+    unsigned m_MaterialID;
+    std::vector<CProd> m_List;
 
-    virtual                            ~CPriceList                             () = default;
+    CPriceList(unsigned materialID): m_MaterialID(materialID){}
 
-    CPriceList                       * add                                     ( const CProd                         & x )
-    {
-      m_List . push_back ( x );
+    CPriceList* add(const CProd& x){
+      m_List.push_back(x);
       return this;
     }
 
-    unsigned                           m_MaterialID;
-    std::vector<CProd>                 m_List;
+    virtual ~CPriceList() = default;
 };
-using APriceList                       = std::shared_ptr<CPriceList>;
+using APriceList = std::shared_ptr<CPriceList>;
 //=============================================================================================================================================================
-class COrder
-{
+class COrder{
   public:
-                                       COrder                                  ( unsigned                              w,
-                                                                                 unsigned                              h,
-                                                                                 double                                weldingStrength )
-      : m_W ( w ),
-        m_H ( h ),
-        m_WeldingStrength ( weldingStrength )
-    {
-    }
+    unsigned m_W;
+    unsigned m_H;
+    double m_WeldingStrength;
+    double m_Cost = 0;
 
-    unsigned                           m_W;
-    unsigned                           m_H;
-    double                             m_WeldingStrength;
-    double                             m_Cost                                  = 0;
+    COrder(unsigned w, unsigned h, double weldingStrength): m_W(w), m_H (h), m_WeldingStrength(weldingStrength){}
 };
 //=============================================================================================================================================================
 class COrderList
 {
   public:
-                                       COrderList                              ( unsigned                              materialID )
-      : m_MaterialID ( materialID )
-    {
-    }
+    unsigned m_MaterialID;
+    std::vector<COrder> m_List;
+  
+    COrderList(unsigned materialID): m_MaterialID(materialID){}
 
-    virtual                            ~COrderList                             () = default;
-
-    COrderList                       * add                                     ( const COrder                        & x )
-    {
-      m_List . push_back ( x );
+    COrderList* add(const COrder& x){
+      m_List.push_back(x);
       return this;
     }
 
-    unsigned                           m_MaterialID;
-    std::vector<COrder>                m_List;
+    virtual ~COrderList() = default;
 };
-using AOrderList                       = std::shared_ptr<COrderList>;
+using AOrderList = std::shared_ptr<COrderList>;
 //=============================================================================================================================================================
-class CProducer : public std::enable_shared_from_this<CProducer>
-{
+class CProducer : public std::enable_shared_from_this<CProducer>{
   public:
-    virtual                            ~CProducer                              () = default;
+    virtual void sendPriceList(unsigned materialID) = 0;
 
-    virtual void                       sendPriceList                           ( unsigned                              materialID ) = 0;
+    virtual ~CProducer() = default;
 };
-using AProducer                        = std::shared_ptr<CProducer>;
+using AProducer = std::shared_ptr<CProducer>;
 //=============================================================================================================================================================
-class CCustomer : public std::enable_shared_from_this<CCustomer>
-{
+class CCustomer : public std::enable_shared_from_this<CCustomer>{
   public:
-    virtual                            ~CCustomer                    () = default;
+    virtual AOrderList waitForDemand() = 0;
 
-    virtual AOrderList                 waitForDemand                 () = 0;
-
-    virtual void                       completed                     ( AOrderList                                      x ) = 0;
+    virtual void completed(AOrderList x) = 0;
+    
+    virtual ~CCustomer() = default;
 };
-using ACustomer                        = std::shared_ptr<CCustomer>;
+using ACustomer = std::shared_ptr<CCustomer>;
 //=============================================================================================================================================================
 #endif /* COMMON_H_09824352756248526345245 */

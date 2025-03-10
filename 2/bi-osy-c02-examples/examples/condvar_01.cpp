@@ -19,7 +19,7 @@ class CounterClass
 private:
   int                  g_Cnt;
   mutex                g_Mtx1, g_Mtx2; 
-  condition_variable   g_Cond;
+  condition_variable   g_Cond1, g_Cond2;
 
 public: 
   CounterClass()
@@ -40,10 +40,10 @@ public:
       if ( val >= 10000 ) break;
     }
 
-    //this_thread::sleep_for( chrono::seconds( rand() % 2 ) );     // <--- #2
+    this_thread::sleep_for( chrono::seconds( rand() % 2 ) );     // <--- #2
     unique_lock<mutex> ul (g_Mtx2);
-    g_Cond.notify_all();
-    g_Cond.wait(ul);
+    g_Cond2.notify_all();
+    g_Cond1.wait(ul, [this]{ return g_Cnt >= 50000; });
     cout << "Thread:  counter = " << g_Cnt << endl;
   }
 
@@ -52,21 +52,21 @@ public:
   {
     int val;
 
-    //this_thread::sleep_for(chrono::seconds(1));                   // <--- #1
+    this_thread::sleep_for(chrono::seconds(1));                   // <--- #1
     unique_lock<mutex> ul (g_Mtx2);
-    g_Cond.wait(ul);
+    g_Cond2.wait(ul, [this]{ return g_Cnt >= 10000; });
     ul.unlock();
 
     while ( 1 )
     {
-      lock_guard<mutex> lg (g_Mtx1);;
+      lock_guard<mutex> lg (g_Mtx1);
       if ( g_Cnt < 50000 ) g_Cnt++;
       val = g_Cnt;
       if ( val >= 50000 ) break;
     }
 
     ul.lock();
-    g_Cond.notify_all();
+    g_Cond1.notify_all();
     cout << "Thread:  counter = " << g_Cnt << endl;
   }
 };
