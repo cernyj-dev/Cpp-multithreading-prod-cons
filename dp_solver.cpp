@@ -50,15 +50,52 @@ x x x
 // creating a 4x2 ([4][2]) 
 vector<vector<int>> memo;
 
-int minPriceTilesRec(const Tile& last_used, int w, int h, const vector<Tile>& tiles, const int& max_w, const int& max_h) {
-    
+int minPriceTilesRec(int w, int h, const vector<Tile>& tiles, const int& max_w, const int& max_h) {
+    if (w > max_w || h > max_h) return INT_MAX;
+    if (w == max_w && h == max_h) return 0;
+    if (memo[w][h] != -1) return memo[w][h];
+
+    int min_price = INT_MAX;
+    for (const auto& tile : tiles) {
+        if (w + tile.width <= max_w && h == tile.height) {
+            int price = minPriceTilesRec(w + tile.width, h, tiles, max_w, max_h);
+            if (price != INT_MAX) {
+                min_price = min(min_price, price + tile.price);
+            }
+        }
+        if (h + tile.height <= max_h && w == tile.width) {
+            int price = minPriceTilesRec(w, h + tile.height, tiles, max_w, max_h);
+            if (price != INT_MAX) {
+                min_price = min(min_price, price + tile.price);
+            }
+        }
+    }
+
+    // Check for new plates formed by welding two plates together
+    for (int i = 1; i <= w / 2; ++i) {
+        int price1 = minPriceTilesRec(i, h, tiles, max_w, max_h);
+        int price2 = minPriceTilesRec(w - i, h, tiles, max_w, max_h);
+        if (price1 != INT_MAX && price2 != INT_MAX) {
+            min_price = min(min_price, price1 + price2);
+        }
+    }
+    for (int i = 1; i <= h / 2; ++i) {
+        int price1 = minPriceTilesRec(w, i, tiles, max_w, max_h);
+        int price2 = minPriceTilesRec(w, h - i, tiles, max_w, max_h);
+        if (price1 != INT_MAX && price2 != INT_MAX) {
+            min_price = min(min_price, price1 + price2);
+        }
+    }
+
+    memo[w][h] = min_price;
+    return min_price;
 }
 
 void result_printer(int h, int w, vector<Tile> &tiles){
     addRotatedTiles(tiles);
     memo.assign(w + 1, vector<int>(h + 1, -1));
     int result = minPriceTilesRec(0, 0, tiles, w, h);
-    if (result != -1) {
+    if (result != INT_MAX) {
         cout << "The minimum price to fill the grid is: " << result << endl;
     } else {
         cout << "It is not possible to fill the grid with the given tiles." << endl;
@@ -71,7 +108,7 @@ int main() {
 
     vector<Tile> tiles; 
     
-    /*
+    
     w = 4;
     h = 4;
     
@@ -80,7 +117,17 @@ int main() {
     };
 
     result_printer(h, w, tiles);
-    */
+    
+    w = 4;
+    h = 4;
+    
+    tiles = {
+        {2, 2, 1}
+    };
+
+    result_printer(h, w, tiles);
+
+
 
     w = 10;
     h = 9;

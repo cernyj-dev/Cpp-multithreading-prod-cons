@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <climits>
+#include <unordered_set>
 
 using namespace std;
 
@@ -18,34 +19,55 @@ void addRotatedTiles(vector<Tile> &tiles) {
     }
 }
 
+
+
+// Naive recursive solution
+// should i take into account a tile of 0x0 dimensions?
+// its a grid, so the dimension are 0, 1, ..., max_w - 1
+/*
+|  |  |  |  |  |  |  |  |  |  |
+
+4x4 grid
+  0  1  2  3
+|  |  |  |  |  0
+|  |  |  |  |  1
+|  |  |  |  |  2
+|  |  |  |  |  3
+
+x x x
+x x x
+x x x
+x x x
+
+
+
+*/
+
+// each [w][h] stands for the minimum price that the w, h Tile costs
+// so basically i will start at 0,0 and start adding Tiles onto it and then add another tile on the right
+// or add another tile below
+// for example 0,0 i will add a tile 2x2, which will set me to [2][2] and now i can try adding another 2x2 on the right 
+// creating a 4x2 ([4][2]) 
 vector<vector<int>> memo;
-vector<vector<pair<int, int>>> tile_used; // To store the tile used at each position
 
-int minPriceTilesRec(const Tile& last_used ,int w, int h, const vector<Tile>& tiles, const int& max_w, const int& max_h) {
-    if (w > max_w || h > max_h) return INT_MAX; // out of bounds
-    if (w == max_w && h == max_h) return 0; // filled the grid
-
+int minPriceTilesRec(int w, int h, const vector<Tile>& tiles, const int& max_w, const int& max_h) {
+    if (w > max_w || h > max_h) return INT_MAX;
+    if (w == max_w && h == max_h) return 0;
     if (memo[w][h] != -1) return memo[w][h];
 
     int min_price = INT_MAX;
-    for (int i = 0; i < tiles.size(); ++i) {
-        if(w != 0 || h != 0){ // pridat podminku pro to, ze napravo od sebe muzu dat jenom tiles, ktery stejnou hranu
-
+    for (const auto& tile : tiles) {
+        if (w + tile.width <= max_w) {
+            int price = minPriceTilesRec(w + tile.width, h, tiles, max_w, max_h);
+            if (price != INT_MAX) {
+                min_price = min(min_price, price + tile.price);
+            }
         }
-
-        const auto& tile = tiles[i];
-        // Try placing the tile to the right
-        int placed_right_price = minPriceTilesRec(tile ,w + tile.width, h, tiles, max_w, max_h);
-        if (placed_right_price != INT_MAX && placed_right_price + tile.price < min_price) {
-            min_price = placed_right_price + tile.price;
-            tile_used[w][h] = {i, 0}; // Store the tile index and orientation (0 for right)
-        }
-
-        // Try placing the tile below
-        int placed_below_price = minPriceTilesRec(tile, w, h + tile.height, tiles, max_w, max_h);
-        if (placed_below_price != INT_MAX && placed_below_price + tile.price < min_price) {
-            min_price = placed_below_price + tile.price;
-            tile_used[w][h] = {i, 1}; // Store the tile index and orientation (1 for below)
+        if (h + tile.height <= max_h) {
+            int price = minPriceTilesRec(w, h + tile.height, tiles, max_w, max_h);
+            if (price != INT_MAX) {
+                min_price = min(min_price, price + tile.price);
+            }
         }
     }
 
@@ -53,29 +75,12 @@ int minPriceTilesRec(const Tile& last_used ,int w, int h, const vector<Tile>& ti
     return min_price;
 }
 
-void printUsedTiles(int w, int h, const vector<Tile>& tiles) {
-    while (w < tiles[0].width && h < tiles[0].height) {
-        auto [tile_index, orientation] = tile_used[w][h];
-        const auto& tile = tiles[tile_index];
-        cout << "Used tile: " << tile.width << "x" << tile.height << " with price " << tile.price << " at position (" << w << ", " << h << ") ";
-        if (orientation == 0) {
-            cout << "placed to the right" << endl;
-            w += tile.width;
-        } else {
-            cout << "placed below" << endl;
-            h += tile.height;
-        }
-    }
-}
-
-void result_printer(int h, int w, vector<Tile> &tiles) {
+void result_printer(int h, int w, vector<Tile> &tiles){
     addRotatedTiles(tiles);
     memo.assign(w + 1, vector<int>(h + 1, -1));
-    tile_used.assign(w + 1, vector<pair<int, int>>(h + 1, {-1, -1}));
-    int result = minPriceTilesRec({0,0,0},0, 0, tiles, w, h);
+    int result = minPriceTilesRec(0, 0, tiles, w, h);
     if (result != INT_MAX) {
         cout << "The minimum price to fill the grid is: " << result << endl;
-        printUsedTiles(0, 0, tiles);
     } else {
         cout << "It is not possible to fill the grid with the given tiles." << endl;
     }
@@ -87,7 +92,7 @@ int main() {
 
     vector<Tile> tiles; 
     
-    /*
+    
     w = 4;
     h = 4;
     
@@ -96,7 +101,17 @@ int main() {
     };
 
     result_printer(h, w, tiles);
-    */
+    
+    w = 4;
+    h = 4;
+    
+    tiles = {
+        {2, 2, 1}
+    };
+
+    result_printer(h, w, tiles);
+
+
 
     w = 10;
     h = 9;
@@ -110,5 +125,6 @@ int main() {
 
     result_printer(h, w, tiles);
     
+
     return 0;
 }
