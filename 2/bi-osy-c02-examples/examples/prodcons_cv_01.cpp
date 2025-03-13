@@ -35,6 +35,8 @@ private:
   condition_variable   cv_full;    // protects from inserting items into a full buffer
   condition_variable   cv_empty;   // protects from removing items from an empty buffer
 
+  
+
   /****************************/
   void PrintBuffer()
   {
@@ -47,10 +49,13 @@ private:
 public: 
   /****************************/
   BufferClass() { }
- 
+  int                 active_producers = 0;  // number of active producers
+  int                 num_consumers = 0;     // number of active consumers
+  mutex               mtx_lights_out;        // mutex for lights_out variable
   /****************************/
   virtual void insert(item_t *item) 
   {
+    
     unique_lock<mutex> ul (mtx);
     cv_full.wait(ul, [ this ] () { return ( buff.size() < BUFFER_SIZE ); } );
     buff.push_back(item);
@@ -58,6 +63,7 @@ public:
     printf("Producer %d:  item [%d,%d,%d] was inserted\n", item->tid, item->tid, item->id, item->value);
     PrintBuffer();
     
+
     cv_empty.notify_one();
   }
 
@@ -103,22 +109,46 @@ void producer(int tid, int delay, BufferClass &buff)
   }
 
   printf("Producer %d: end\n", tid);
+  {
+    lock_guard<mutex> lg(buff.mtx_lights_out);
+    // If all producers are done, then fill the buffer with some NULL items -> lights out
+    buff.active_producers--;
+    if (buff.active_producers == 0){
+      printf("Producer %d: lights out\n", tid);
+      // there could be a problem... if i dont generate 10*buff.num_consumers items, then the program will end by deadlock - maybe
+      for(int i = 0; i < buff.num_consumers; i++){
+        item_t *end_signal  = new item_t { -1, count++, 0 };
+        buff.insert(end_signal);
+      }
+    }
+  }
 }
+
+
 
 /*************************************/
 void consumer(int tid, int delay, BufferClass &buff )
 {  
   int delay_ms = 100 * delay; 
 
-  // Remove 10 items from the buffer
-  for ( int i = 0; i < 10; i++ ) 
-  {
-    item_t *item = buff.remove(tid);
-    delete(item);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+  while(true){
+    // Remove 10 items from the buffer
+    // Maybe i should break it if i get a NULL item
+    for ( int i = 0; i < 10; i++ ) 
+    {
+      item_t *item = buff.remove(tid);
+      int value = item->tid;
+      delete(item);
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms)); // this should be here to spot some mistakes
+                                                                        // Maybe i should put this in a separate mutex ... just like the for loop in producer - but that might be obsolete
+                                                                        // because only single prod does that
+      if(value == -1){
+        printf("Consumer %d: end\n", tid);
+        return;
+      }
+      
+    }
   }
-  printf("Consumer %d: end\n", tid);
 }
 
 /*************************************/
@@ -141,6 +171,9 @@ int main ( int argc, char * argv [] )
     printf ( "Usage: %s <# of produsers> <producer delay> <# of consumers> <consumer delay>\n", argv[0] );
     return ( 1 );
   }
+  
+  buffer.active_producers = prods;
+  buffer.num_consumers = cons;
   
   // Create produsers 
   for ( int i = 0; i < prods; i ++ )

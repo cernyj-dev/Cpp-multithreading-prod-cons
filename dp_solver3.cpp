@@ -75,7 +75,7 @@ void solver(const vector<Tile>& tiles, COrder& order) {
 
 void result_printer(COrder& order, vector<Tile> &tiles){
     solver(tiles, order);
-    if (order.m_Cost != INT_MAX) {
+    if (order.m_Cost != DBL_MAX) {
         cout << "The minimum price to fill the grid is: " << order.m_Cost << endl;
     } else {
         cout << "It is not possible to fill the grid with the given tiles." << endl;
