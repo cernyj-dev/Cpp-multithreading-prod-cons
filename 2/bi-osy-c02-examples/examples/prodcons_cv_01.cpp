@@ -49,7 +49,7 @@ private:
 public: 
   /****************************/
   BufferClass() { }
-  int                 active_producers = 0;  // number of active producers
+  size_t              active_producers = 0;  // number of active producers
   int                 num_consumers = 0;     // number of active consumers
   mutex               mtx_lights_out;        // mutex for lights_out variable
   /****************************/

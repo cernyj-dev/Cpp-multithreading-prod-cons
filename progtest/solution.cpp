@@ -59,55 +59,149 @@ v obou pripadech ale proste dojede ten for cyklus a po nem si musi pockat na wai
 
 
 */ 
+
 class CMaterialInfo{
   public:
     bool m_has_all_pricelists = false;
     unsigned m_material_id;
-    unsigned m_price_list_count = 0;
+    mutex m_mutex_mi; 
+
     CMaterialInfo(unsigned material_id): m_material_id(material_id){}
 
-
-
-  private:
+    void unifyPriceList(){
+      lock_guard<mutex> lg(m_mutex_mi);
+      bool duplicity_found = false;
+      // projedu vsechny pricelisty a kazdy cProd z nich zkusim pridat do unified_pricelist
+      for(size_t i = 0; i < m_pricelists.size(); i++){
+        for(size_t j = 0; j < m_pricelists[i]->m_List.size(); j++){
+          // projedu cely pricelist a pokud uz mam stejne rozmery, tak si necham tu s mensi cenou
+          for(size_t k = 0; k < m_unified_pricelist.size(); k++){
+            // maji stejne vysky a sirky nebo je vyska se sirkou stejna a sirka s vyskou stejna ... rotace
+            if((m_unified_pricelist[k].m_W == m_pricelists[i]->m_List[j].m_W && m_unified_pricelist[k].m_H == m_pricelists[i]->m_List[j].m_H) || 
+              (m_unified_pricelist[k].m_W == m_pricelists[i]->m_List[j].m_H && m_unified_pricelist[k].m_H == m_pricelists[i]->m_List[j].m_W)){
+              duplicity_found = true;
+              m_unified_pricelist[k].m_Cost = min(m_unified_pricelist[k].m_Cost, m_pricelists[i]->m_List[j].m_Cost);
+              break;
+            }
+          }
+          // pokud jsem projel cely unified_pricelist a nenasel jsem tam tenhle CProd, tak ho tam pridam ... nema tam duplicitu
+          if(duplicity_found == false){
+            m_unified_pricelist.push_back(m_pricelists[i]->m_List[j]);
+          }
+        }
+      }
+      // zamek se odemkne a ja mam unifikovany cenik
+    }
 
     vector<APriceList> m_pricelists; // <- postupne sem budu strkat ceniky dodavatelu
     vector<CProd> m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
+    set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
 
+
+
+    // co kdyz ale dva ruzni customers najednou poslou COrderList se stejnym materialID?
+    // pak prece budu zaplnovat ten stejny vector dvakrat a naplnim to mnohem driv a hlavne bez vsech ceniku
+    // takze pamatovat si ty AProducer musim a pak podle velikosti tohodle zjistit, jestli mam vsechny
 
   };
+  using AMaterialInfo = std::shared_ptr<CMaterialInfo>;
+// ===================================================================================================================
+    
+class CCustomerInfo{
+  public:
+    CCustomerInfo(ACustomer cust, AOrderList orderList, AMaterialInfo materialInfo): cust(cust), orderList(orderList), materialInfo(materialInfo){
+      m_number_of_all_orders = orderList->m_List.size();
+    }
+
+    ACustomer cust;
+    AOrderList orderList;
+    AMaterialInfo materialInfo;
+    unsigned m_number_of_completed_orders = 0;
+    unsigned m_number_of_all_orders = 0;
+
+  };
+  using ACustomerInfo = std::shared_ptr<CCustomerInfo>;
+
+// ===================================================================================================================
 
 class CWeldingCompany{
-  private:
-    vector<AProducer> m_Producers;
-    vector<ACustomer> m_Customers;
-    vector<thread> m_Threads;
-
-    map<unsigned, CMaterialInfo> m_Materials;
-
-    queue<COrder> m_Orders_buffer;                // shared buffer      
-    mutex m_buffer_mutex;                         // controls access to share buffer (critical section)
-    condition_variable m_cv_Orders_buffer_full;   // protects from inserting items into a full buffer
-    condition_variable m_cv_Orders_buffer_empty;  // protects from removing items from an empty buffer
-
-    condition_variable m_cv_Complete_CPriceList;  // 
-
-
-    bool m_Stop = false;
-    int m_number_of_customers = 0;
-    int m_number_of_workers = 0;
 
   public:
     static bool usingProgtestSolver(){
       return false;
     }
-    // maybe i should lock this? -> cvicici rikal ze ne
+    
 
+    void workerFnc(){}
+
+    void catcherFnc(ACustomer cust){
+      while(true){
+        AOrderList orderList = cust->waitForDemand();
+
+        if(orderList == nullptr){
+          break;
+        }
+
+        bool has_all_pricelists = false;
+
+        {
+          lock_guard<mutex> lg(m_mutex_wc);
+          // mam uz zaznam o tomhle materialID? Pokud ne... tak si ho vytvorim
+          if(m_Materials.find(orderList->m_MaterialID) == m_Materials.end()){
+            m_Materials[orderList->m_MaterialID] = make_shared<CMaterialInfo>(orderList->m_MaterialID);
+          }
+
+          has_all_pricelists = m_Materials[orderList->m_MaterialID]->m_has_all_pricelists;
+        }
+
+        // mam k tomuhle materialID uz kompletni cenik?
+        if(has_all_pricelists == false){
+          // pokud ne, tak projdi vsechny dodavatele a zavolej na nich sendPriceList
+          for(size_t j = 0; j < m_Producers.size(); j++){
+            m_Producers[j]->sendPriceList(orderList->m_MaterialID);
+          }
+          // pockej na to, nez budes mit vsechny ceniky
+          unique_lock<mutex> ul(m_mutex_wc);
+          m_cv_Complete_CPriceList.wait(ul, [this, orderList](){return m_Materials[orderList->m_MaterialID]->m_has_all_pricelists;});
+        }
+
+        // ted musim zavolat funkci na unifikovani tech pricelists
+        // a pak uz muzu zacit plnit tu frontu
+
+        m_Materials[orderList->m_MaterialID]->unifyPriceList();
+
+        ACustomerInfo cust_info = make_shared<CCustomerInfo>(cust, orderList, m_Materials[orderList->m_MaterialID]);
+        
+        {
+          lock_guard<mutex> lg(m_mutex_wc);
+          for(const auto& order: orderList->m_List){
+            m_Orders_buffer.push(make_pair(order, cust_info));
+            m_cv_Orders_buffer_empty.notify_one();
+          }
+        }
+      }
+      {
+        lock_guard<mutex> lg(m_mutex_wc);
+        m_number_of_active_customers--;
+
+        // lights out
+        if(m_number_of_active_customers == 0){
+          for (int i = 0; i < m_number_of_workers; i++){
+            // dummy light out order has nullptr as customer info
+            m_Orders_buffer.push(make_pair(COrder(0, 0, 0), nullptr));
+            m_cv_Orders_buffer_empty.notify_one();
+          }
+        }
+      }
+
+    }
+    
 
     static void seqSolve(APriceList priceList, COrder& order){
-      int max_w = order.m_W;
-      int max_h = order.m_H;
+      unsigned max_w = order.m_W;
+      unsigned max_h = order.m_H;
       vector<vector<double>> memo(max_w + 1, vector<double>(max_h + 1, DBL_MAX));
-      for(int i = 0; i < priceList->m_List.size(); i++){
+      for(size_t i = 0; i < priceList->m_List.size(); i++){
           // fill out the memoization table with alread existing tiles - the normal ones and rotated ones as well
           // only add tiles that are actually smaller or equal to the max_w and max_h
           // cant cut down the tiles, so it only makes sense to add the ones that i can weld together (and are therefore smaller or equal to the tasked plate)
@@ -127,14 +221,14 @@ class CWeldingCompany{
 
       // go over the table and iterate left of "me" to look at all the tiles with the same height - whenever that tile isnt INT_MAX, then i can add it to the right of me (within bounds)
       // and iterate above of "me" to look at all the tiles with the same width - whenever that tile isnt INT_MAX, then i can add it below of me (within bounds)
-      for(int w = 0; w <= max_w; w++){ // desky muzu pouze svaret a ne rezat ... dava smysl jit pouze zleva doprava a shora dolu
-          for(int h = 0; h <= max_h; h++){
+      for(unsigned w = 0; w <= max_w; w++){ // desky muzu pouze svaret a ne rezat ... dava smysl jit pouze zleva doprava a shora dolu
+          for(unsigned h = 0; h <= max_h; h++){
               if(memo[w][h] == DBL_MAX){
                   continue;
               }
 
               // same height
-              for(int i = 1; i <= w; i++){
+              for(unsigned i = 1; i <= w; i++){
                   if(memo[i][h] != DBL_MAX && w + i <= max_w){
                       // chcu si nechat, co uz tam je, nebo novou price? ... nova price = memo[w][h] + memo[i][h] + order.m_WeldingStrength*h ... maji stejnou vejsku, takze spoj je h*m_WeldingStrength
                       memo[w + i][h] = min(memo[w + i][h], memo[w][h] + memo[i][h] + order.m_WeldingStrength*h);
@@ -142,7 +236,7 @@ class CWeldingCompany{
               }
 
               // same width
-              for(int j = 1; j <= h; j++){
+              for(unsigned j = 1; j <= h; j++){
                   if(memo[w][j] != DBL_MAX && h + j <= max_h){
                       memo[w][h + j] = min(memo[w][h + j], memo[w][h] + memo[w][j] + order.m_WeldingStrength*w);
                   }
@@ -152,29 +246,64 @@ class CWeldingCompany{
       order.m_Cost = memo[max_w][max_h];
       return;
     }
-    
     void addProducer(AProducer prod){
       m_Producers.push_back(prod);
     }
-    
     void addCustomer(ACustomer cust){
       m_Customers.push_back(cust);
     }
     
     void addPriceList(AProducer prod, APriceList priceList){
-      
-      m_Materials[priceList->m_MaterialID].m_price_list_count++;
-      if(m_Materials[priceList->m_MaterialID].m_price_list_count == m_Producers.size()){
-        m_Materials[priceList->m_MaterialID].m_has_all_pricelists = true;
-        m_cv_Complete_CPriceList.notify_all();
+      lock_guard<mutex> lg(m_mutex_wc);
+      // neni ten producer jeste zaznamenan?
+      if(m_Materials[priceList->m_MaterialID]->m_producers_received.find(prod) == m_Materials[priceList->m_MaterialID]->m_producers_received.end()){
+        m_Materials[priceList->m_MaterialID]->m_producers_received.insert(prod);
+        m_Materials[priceList->m_MaterialID]->m_pricelists.push_back(priceList);
+        
+        // dostal jsem uz vsechny pricelisty?
+        if(m_Materials[priceList->m_MaterialID]->m_producers_received.size() == m_Producers.size()){
+          // tak probud catchery, kteri cekaji na vsechny pricelisty
+          m_Materials[priceList->m_MaterialID]->m_has_all_pricelists = true; // <- odemceni te podminky
+          m_cv_Complete_CPriceList.notify_all();
+        }
       }
+      // mutex se unlockne
     }
     
     void start(unsigned thrCount){
-      // 
+      // vsechny threads = main + threadCount (workers) + customer.size (podpurny)
+      m_number_of_active_customers = m_Customers.size();
+      m_number_of_workers = thrCount;
+      for(unsigned i = 0; i < thrCount; i++){
+        m_Threads.push_back(thread(&CWeldingCompany::workerFnc, this));
+      }
+      for(size_t i = 0; i < m_Customers.size(); i++){
+        m_Threads.push_back(thread(&CWeldingCompany::catcherFnc, this, m_Customers[i]));
+      }
+
     }
     
     void stop(){}
+
+
+  
+    vector<AProducer> m_Producers;
+    vector<ACustomer> m_Customers;
+    vector<thread> m_Threads;
+
+    map<unsigned, AMaterialInfo> m_Materials;     // ke kazdemu materialu si drzi optimalni cenik
+
+    queue<pair<COrder, ACustomerInfo>> m_Orders_buffer;                // shared buffer      
+    mutex m_mutex_wc;                         // controls access to share buffer (critical section)
+    //condition_variable m_cv_Orders_buffer_full;   // protects from inserting items into a full buffer
+    condition_variable m_cv_Orders_buffer_empty;  // protects from removing items from an empty buffer, not needed
+
+    condition_variable m_cv_Complete_CPriceList;  // 
+
+
+    bool m_Stop = false;
+    size_t m_number_of_active_customers = 0;
+    int m_number_of_workers = 0;
 };
 
 //-------------------------------------------------------------------------------------------------
