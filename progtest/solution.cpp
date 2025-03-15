@@ -132,7 +132,7 @@ class CWeldingCompany{
     }
     
 
-    void workerFnc(){}
+    
 
     void catcherFnc(ACustomer cust){
       while(true){
@@ -174,8 +174,8 @@ class CWeldingCompany{
         
         {
           lock_guard<mutex> lg(m_mutex_wc);
-          for(const auto& order: orderList->m_List){
-            m_Orders_buffer.push(make_pair(order, cust_info));
+          for(auto& order: orderList->m_List){
+            m_Orders_buffer.push(make_pair(&order, cust_info));
             m_cv_Orders_buffer_empty.notify_one();
           }
         }
@@ -188,7 +188,7 @@ class CWeldingCompany{
         if(m_number_of_active_customers == 0){
           for (int i = 0; i < m_number_of_workers; i++){
             // dummy light out order has nullptr as customer info
-            m_Orders_buffer.push(make_pair(COrder(0, 0, 0), nullptr));
+            m_Orders_buffer.push(make_pair(nullptr, nullptr));
             m_cv_Orders_buffer_empty.notify_one();
           }
         }
@@ -196,6 +196,34 @@ class CWeldingCompany{
 
     }
     
+    void workerFnc(){
+      while(true){
+        pair<COrder*, ACustomerInfo> order (nullptr, nullptr);
+        {
+          unique_lock<mutex> ul(m_mutex_wc);
+          m_cv_Orders_buffer_empty.wait(ul, [this](){return !m_Orders_buffer.empty();});
+          order = m_Orders_buffer.front();
+          m_Orders_buffer.pop();
+        }
+        // lights out
+        if(order.second == nullptr){
+          break;
+        }
+
+        APriceList priceList = make_shared<CPriceList>();
+        priceList->m_List = order.second->materialInfo->m_unified_pricelist;
+
+        seqSolve(priceList, *(order.first));
+
+        {
+          lock_guard<mutex> lg(m_mutex_wc);
+          order.second->m_number_of_completed_orders++;
+          if(order.second->m_number_of_completed_orders == order.second->m_number_of_all_orders){
+            order.second->cust->completed(order.second->orderList);
+          }
+        }
+      }
+    }
 
     static void seqSolve(APriceList priceList, COrder& order){
       unsigned max_w = order.m_W;
@@ -274,16 +302,27 @@ class CWeldingCompany{
       // vsechny threads = main + threadCount (workers) + customer.size (podpurny)
       m_number_of_active_customers = m_Customers.size();
       m_number_of_workers = thrCount;
-      for(unsigned i = 0; i < thrCount; i++){
-        m_Threads.push_back(thread(&CWeldingCompany::workerFnc, this));
-      }
+      
       for(size_t i = 0; i < m_Customers.size(); i++){
         m_Threads.push_back(thread(&CWeldingCompany::catcherFnc, this, m_Customers[i]));
       }
 
+      for(unsigned i = 0; i < thrCount; i++){
+        m_Threads.push_back(thread(&CWeldingCompany::workerFnc, this));
+      }
+
     }
     
-    void stop(){}
+    void stop(){
+
+      for(size_t i = 0; i < m_Customers.size(); i++){
+        m_Threads[i].join();
+      }
+
+      for(size_t i = 0; i < m_Threads.size(); i++){
+        m_Threads[i].join();
+      }
+    }
 
 
   
@@ -293,15 +332,13 @@ class CWeldingCompany{
 
     map<unsigned, AMaterialInfo> m_Materials;     // ke kazdemu materialu si drzi optimalni cenik
 
-    queue<pair<COrder, ACustomerInfo>> m_Orders_buffer;                // shared buffer      
+    queue<pair<COrder*, ACustomerInfo>> m_Orders_buffer;                // shared buffer      
     mutex m_mutex_wc;                         // controls access to share buffer (critical section)
     //condition_variable m_cv_Orders_buffer_full;   // protects from inserting items into a full buffer
     condition_variable m_cv_Orders_buffer_empty;  // protects from removing items from an empty buffer, not needed
 
     condition_variable m_cv_Complete_CPriceList;  // 
 
-
-    bool m_Stop = false;
     size_t m_number_of_active_customers = 0;
     int m_number_of_workers = 0;
 };
