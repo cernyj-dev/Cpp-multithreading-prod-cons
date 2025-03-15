@@ -30,9 +30,31 @@
 #endif /* __PROGTEST__ */
 
 using namespace std;
+/*
+#ifndef bobik
+#define bobik
+inline void randomZpozdeni(){
+  std::this_thread::sleep_for(std::chrono::milliseconds(std::rand() % 100));
+}
+#endif */
+
+
+// poznamky:
+
+// ruzny druhy materialu issue maybe
+// jde vyskrnout ten shared ptr na materialInfo a proste prestavet ten wrapper trochu
+
+// mam shared resource - ten read musim zamknout taky -  hlavne pokud ten shared resource se muze menit v case
+
+
+
+
 
 
 // printf("Producer %d: lights out\n", tid);
+
+
+
 
 class CMaterialInfo{
   public:
@@ -40,11 +62,23 @@ class CMaterialInfo{
     unsigned m_material_id;
     mutex m_mutex_mi; 
 
+    vector<APriceList> m_pricelists; // <- postupne sem budu strkat ceniky dodavatelu
+    vector<CProd> m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
+    set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
+
+
     CMaterialInfo(unsigned material_id): m_material_id(material_id){}
+    CMaterialInfo(){
+      m_material_id = 0;
+      m_pricelists = vector<APriceList>();
+      m_unified_pricelist = vector<CProd>();
+      m_producers_received = set<AProducer>();
+    }
 
     void unifyPriceList(){
       lock_guard<mutex> lg(m_mutex_mi);
       bool duplicity_found = false;
+      
       // projedu vsechny pricelisty a kazdy cProd z nich zkusim pridat do unified_pricelist
       for(size_t i = 0; i < m_pricelists.size(); i++){
         for(size_t j = 0; j < m_pricelists[i]->m_List.size(); j++){
@@ -67,9 +101,7 @@ class CMaterialInfo{
       // zamek se odemkne a ja mam unifikovany cenik
     }
 
-    vector<APriceList> m_pricelists; // <- postupne sem budu strkat ceniky dodavatelu
-    vector<CProd> m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
-    set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
+    
 
 
 
@@ -89,7 +121,7 @@ class CCustomerInfo{
 
     ACustomer cust;
     AOrderList orderList;
-    AMaterialInfo materialInfo;
+    AMaterialInfo materialInfo;   
     unsigned m_number_of_completed_orders = 0;
     unsigned m_number_of_all_orders;
 
@@ -115,12 +147,13 @@ class CWeldingCompany{
         }
 
         bool has_all_pricelists = false;
-
+        //randomZpozdeni();
         {
           lock_guard<mutex> lg(m_mutex_wc);
           // mam uz zaznam o tomhle materialID? Pokud ne... tak si ho vytvorim
           if(m_Materials.find(orderList->m_MaterialID) == m_Materials.end()){
-            m_Materials[orderList->m_MaterialID] = make_shared<CMaterialInfo>(orderList->m_MaterialID);
+            m_Materials[orderList->m_MaterialID] = make_shared<CMaterialInfo>(orderList->m_MaterialID); // WTF ... ta podminka je vlastne dogshit maybe ... 
+                                                                                                        
           }
 
           has_all_pricelists = m_Materials[orderList->m_MaterialID]->m_has_all_pricelists;
@@ -181,6 +214,7 @@ class CWeldingCompany{
         if(order.second == nullptr){
           break;
         }
+        //randomZpozdeni();
 
         APriceList priceList = make_shared<CPriceList>(order.second->materialInfo->m_material_id);
         priceList->m_List = order.second->materialInfo->m_unified_pricelist;
@@ -255,17 +289,27 @@ class CWeldingCompany{
       m_Customers.push_back(cust);
     }
     
+
+    // m_Materials rozbity probably
+
     void addPriceList(AProducer prod, APriceList priceList){
       lock_guard<mutex> lg(m_mutex_wc);
       // neni ten producer jeste zaznamenan?
-      if(m_Materials[priceList->m_MaterialID]->m_producers_received.find(prod) == m_Materials[priceList->m_MaterialID]->m_producers_received.end()){ // iterator muze zrychlit pokud si drzim iterator na m_Material[priceList->m_MaterialID]->m_producers_received
-        m_Materials[priceList->m_MaterialID]->m_producers_received.insert(prod);
-        m_Materials[priceList->m_MaterialID]->m_pricelists.push_back(priceList);
+      auto it = m_Materials.find(priceList->m_MaterialID);                  
+      if(it == m_Materials.end()){                                          // WTF ... nekdy se nenaplni a pak k tomu pristupuju
+        it->second = make_shared<CMaterialInfo>(priceList->m_MaterialID); // <--- bullshit?
+      }
+
+      //randomZpozdeni();
+
+      if(it->second->m_producers_received.find(prod) == it->second->m_producers_received.end()){ // iterator muze zrychlit pokud si drzim iterator na m_Material[priceList->m_MaterialID]->m_producers_received
+        it->second->m_producers_received.insert(prod);
+        it->second->m_pricelists.push_back(priceList);
         
         // dostal jsem uz vsechny pricelisty?
-        if(m_Materials[priceList->m_MaterialID]->m_producers_received.size() == m_Producers.size()){
+        if(it->second->m_producers_received.size() == m_Producers.size()){
           // tak probud catchery, kteri cekaji na vsechny pricelisty
-          m_Materials[priceList->m_MaterialID]->m_has_all_pricelists = true; // <- odemceni te podminky
+          it->second->m_has_all_pricelists = true; // <- odemceni te podminky
           m_cv_Complete_CPriceList.notify_all();
         }
       }
@@ -283,7 +327,7 @@ class CWeldingCompany{
       }
 
       for(unsigned i = 0; i < thrCount; i++){
-        m_worker_threads.push_back(thread(&CWeldingCompany::workerFnc, this));
+      m_worker_threads.push_back(thread(&CWeldingCompany::workerFnc, this));
       }
 
     }
@@ -304,12 +348,12 @@ class CWeldingCompany{
     vector<thread> m_catcher_threads;
     vector<thread> m_worker_threads;
 
-    map<unsigned, AMaterialInfo> m_Materials;     // ke kazdemu materialu si drzi optimalni cenik
+    map<unsigned, AMaterialInfo> m_Materials = map<unsigned, AMaterialInfo>();     // ke kazdemu materialu si drzi optimalni cenik
 
     queue<pair<COrder*, ACustomerInfo>> m_Orders_buffer;                // shared buffer      
     mutex m_mutex_wc;                         // controls access to share buffer (critical section)
-    //condition_variable m_cv_Orders_buffer_full;   // protects from inserting items into a full buffer
-    condition_variable m_cv_Orders_buffer_empty;  // protects from removing items from an empty buffer, not needed
+
+    condition_variable m_cv_Orders_buffer_empty;  // protects from removing items from an empty buffer
 
     condition_variable m_cv_Complete_CPriceList;  // 
 
@@ -317,8 +361,12 @@ class CWeldingCompany{
     int m_number_of_workers = 0;
 };
 
+
+
+
 //-------------------------------------------------------------------------------------------------
 #ifndef __PROGTEST__
+/*
 int main(){
   using namespace std::placeholders;
   CWeldingCompany test;
@@ -334,4 +382,5 @@ int main(){
   p2->stop();
   return EXIT_SUCCESS;
 }
+*/
 #endif /* __PROGTEST__ */

@@ -1,7 +1,7 @@
 CXX=g++
 LD=g++
 AR=ar
-CXXFLAGS=-std=c++20 -Wall -pedantic -O2
+CXXFLAGS=-std=c++20 -Wall -pedantic -O2 -g
 SHELL:=/bin/bash
 MACHINE=$(shell uname -m)-$(shell echo $$OSTYPE)
 
@@ -19,7 +19,7 @@ all: test
 deps:
 	$(CXX) -MM *.cpp > Makefile.d
 
-test: solution.o sample_tester.o
+test: solution.o sample_tester.o testing.o
 	$(LD) $(CXXFLAGS) -o $@ $^ -L./$(MACHINE) -lprogtest_solver -lpthread
 
 %.o: %.cpp
