@@ -32,6 +32,8 @@
 using namespace std;
 
 
+// printf("Producer %d: lights out\n", tid);
+
 class CMaterialInfo{
   public:
     bool m_has_all_pricelists = false;
@@ -89,7 +91,7 @@ class CCustomerInfo{
     AOrderList orderList;
     AMaterialInfo materialInfo;
     unsigned m_number_of_completed_orders = 0;
-    unsigned m_number_of_all_orders = 0;
+    unsigned m_number_of_all_orders;
 
   };
   using ACustomerInfo = std::shared_ptr<CCustomerInfo>;
@@ -108,6 +110,7 @@ class CWeldingCompany{
         AOrderList orderList = cust->waitForDemand();
 
         if(orderList == nullptr){
+          //printf("Customer ended\n");
           break;
         }
 
@@ -187,6 +190,7 @@ class CWeldingCompany{
         {
           lock_guard<mutex> lg(m_mutex_wc);
           order.second->m_number_of_completed_orders++;
+
           if(order.second->m_number_of_completed_orders == order.second->m_number_of_all_orders){
             order.second->cust->completed(order.second->orderList);
           }
@@ -243,6 +247,7 @@ class CWeldingCompany{
       order.m_Cost = memo[max_w][max_h];
       return;
     }
+    
     void addProducer(AProducer prod){
       m_Producers.push_back(prod);
     }
@@ -253,7 +258,7 @@ class CWeldingCompany{
     void addPriceList(AProducer prod, APriceList priceList){
       lock_guard<mutex> lg(m_mutex_wc);
       // neni ten producer jeste zaznamenan?
-      if(m_Materials[priceList->m_MaterialID]->m_producers_received.find(prod) == m_Materials[priceList->m_MaterialID]->m_producers_received.end()){
+      if(m_Materials[priceList->m_MaterialID]->m_producers_received.find(prod) == m_Materials[priceList->m_MaterialID]->m_producers_received.end()){ // iterator muze zrychlit pokud si drzim iterator na m_Material[priceList->m_MaterialID]->m_producers_received
         m_Materials[priceList->m_MaterialID]->m_producers_received.insert(prod);
         m_Materials[priceList->m_MaterialID]->m_pricelists.push_back(priceList);
         
@@ -271,19 +276,23 @@ class CWeldingCompany{
       // vsechny threads = main + threadCount (workers) + customer.size (podpurny)
       m_number_of_active_customers = m_Customers.size();
       m_number_of_workers = thrCount;
+
       
       for(size_t i = 0; i < m_Customers.size(); i++){
-        m_Threads.push_back(thread(&CWeldingCompany::catcherFnc, this, m_Customers[i]));
+        m_catcher_threads.push_back(thread(&CWeldingCompany::catcherFnc, this, m_Customers[i]));
       }
 
       for(unsigned i = 0; i < thrCount; i++){
-        m_Threads.push_back(thread(&CWeldingCompany::workerFnc, this));
+        m_worker_threads.push_back(thread(&CWeldingCompany::workerFnc, this));
       }
 
     }
     
     void stop(){
-      for ( auto & t : m_Threads )
+      for ( auto & t : m_catcher_threads )
+        t.join (); 
+
+      for ( auto & t : m_worker_threads )
         t.join (); 
     }
 
@@ -291,7 +300,9 @@ class CWeldingCompany{
   
     vector<AProducer> m_Producers;
     vector<ACustomer> m_Customers;
-    vector<thread> m_Threads;
+
+    vector<thread> m_catcher_threads;
+    vector<thread> m_worker_threads;
 
     map<unsigned, AMaterialInfo> m_Materials;     // ke kazdemu materialu si drzi optimalni cenik
 
