@@ -31,34 +31,6 @@
 
 using namespace std;
 
-// materialID je unsigned int
-// m_Cost je double, stejne tak m_WeldingStrength
-
-/*
-  Scenar: 
-  catcher ziska objednavku
-  catcher se podiva do m_Materials jestli pro zadany material ma ten unifikovany pricelist
-    
-    pokud ne, tak projde kazdeho producenta a zavola na nem sendPriceList
-    potom pocka na cv_Complete_CPriceList - teda na to, ze vsechny pricelisty jsou nacteny
-
-- synchronni... catcherFnc -> sendPriceList -> addPriceList(lock) -> sendPriceList -> catcherFnc
-- asynchronni... catcherFnc -> sendPriceList(poznamena si) -> catcherFnc ... a potom nekdy se zavola addPriceList
-v obou pripadech ale proste dojede ten for cyklus a po nem si musi pockat na wait, nez bude mit vsechny ceniky
-  wait si jeste odemkne ten mutex
-
-  po tomhle uz muze catcher naplnit queue temi COrders a workers si je budou postupne brat a volat s nimi solve
-
-  po solve bude potreba jeste potreba poznamenat do spolecneho wrapperu, ze je hotova tahle COrder z COrderList
-  a pokud je to posledni, tak ji worker asi muze i odeslat pomoci complete()
-
-  wrappery:
-    MaterialInfo - o cenikach a tak
-    ActiveOrder - wrapper okolo COrderListu
-    
-
-
-*/ 
 
 class CMaterialInfo{
   public:
@@ -130,9 +102,6 @@ class CWeldingCompany{
     static bool usingProgtestSolver(){
       return false;
     }
-    
-
-    
 
     void catcherFnc(ACustomer cust){
       while(true){
@@ -210,7 +179,7 @@ class CWeldingCompany{
           break;
         }
 
-        APriceList priceList = make_shared<CPriceList>();
+        APriceList priceList = make_shared<CPriceList>(order.second->materialInfo->m_material_id);
         priceList->m_List = order.second->materialInfo->m_unified_pricelist;
 
         seqSolve(priceList, *(order.first));
@@ -314,14 +283,8 @@ class CWeldingCompany{
     }
     
     void stop(){
-
-      for(size_t i = 0; i < m_Customers.size(); i++){
-        m_Threads[i].join();
-      }
-
-      for(size_t i = 0; i < m_Threads.size(); i++){
-        m_Threads[i].join();
-      }
+      for ( auto & t : m_Threads )
+        t.join (); 
     }
 
 
