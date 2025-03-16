@@ -19,7 +19,7 @@ all: test
 deps:
 	$(CXX) -MM *.cpp > Makefile.d
 
-test: solution.o sample_tester.o #testing.o
+test: solution.o sample_tester.o testing.o
 	$(LD) $(CXXFLAGS) -o $@ $^ -L./$(MACHINE) -lprogtest_solver -lpthread
 
 %.o: %.cpp

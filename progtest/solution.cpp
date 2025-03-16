@@ -160,11 +160,13 @@ class CWeldingCompany{
           material_lock.lock();
 
           // pockej na to, nez budes mit vsechny ceniky
-          m_cv_Complete_CPriceList.wait(material_lock, [&](){return m_All_Materials_Info[orderList->m_MaterialID].m_has_all_pricelists;});
           
-          m_All_Materials_Info[orderList->m_MaterialID].unifyPriceList();
         }
+        m_cv_Complete_CPriceList.wait(material_lock, [&](){return m_All_Materials_Info[orderList->m_MaterialID].m_has_all_pricelists;});
         
+        m_All_Materials_Info[orderList->m_MaterialID].unifyPriceList();
+
+
         material_lock.unlock();
         
 
@@ -303,21 +305,21 @@ class CWeldingCompany{
           m_All_Materials_Info[priceList->m_MaterialID].m_has_all_pricelists = true;
           m_cv_Complete_CPriceList.notify_all();                                                                
         }
+        return;
       }
       // pokud zaznam nalezen byl
-      else{
-        // tak pridavam noveho producera?
-        if(it->second.m_producers_received.find(prod) == it->second.m_producers_received.end()){ 
-          it->second.m_pricelists.push_back(priceList);
-          it->second.m_producers_received.insert(prod);
-
-          // dostal jsem uz vsechny pricelisty pri pridani posledniho producenta?
-          if(it->second.m_producers_received.size() == m_Producers.size()){
-            // tak probud catchery, kteri cekaji na vsechny pricelisty
-            it->second.m_has_all_pricelists = true; // <- odemceni te podminky
-            m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?  // CHANGE... NOTIFY ALL TO NOTIFY ONE
-          }
-        }
+      
+      // tak pridavam noveho producera?
+      if(it->second.m_producers_received.find(prod) == it->second.m_producers_received.end()){ 
+        it->second.m_pricelists.push_back(priceList);
+        it->second.m_producers_received.insert(prod);
+      }
+      
+      // dostal jsem uz vsechny pricelisty pri pridani posledniho producenta?
+      if(it->second.m_producers_received.size() == m_Producers.size()){
+        // tak probud catchery, kteri cekaji na vsechny pricelisty
+        it->second.m_has_all_pricelists = true; // <- odemceni te podminky
+        m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?  // CHANGE... NOTIFY ALL TO NOTIFY ONE
       }
     }
     
@@ -371,7 +373,7 @@ class CWeldingCompany{
 
 //-------------------------------------------------------------------------------------------------
 #ifndef __PROGTEST__
-
+/*
 int main(){
   using namespace std::placeholders;
   CWeldingCompany test;
@@ -387,5 +389,5 @@ int main(){
   p2->stop();
   return EXIT_SUCCESS;
 }
-
+*/
 #endif /* __PROGTEST__ */
