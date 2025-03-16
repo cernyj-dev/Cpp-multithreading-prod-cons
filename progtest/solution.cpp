@@ -72,6 +72,7 @@ class CMaterialInfo{
       // projedu vsechny pricelisty a kazdy cProd z nich zkusim pridat do unified_pricelist
       for(size_t i = 0; i < m_pricelists.size(); i++){
         for(size_t j = 0; j < m_pricelists[i]->m_List.size(); j++){
+          duplicity_found = false;
           // projedu cely pricelist a pokud uz mam stejne rozmery, tak si necham tu s mensi cenou
           for(size_t k = 0; k < m_unified_pricelist.m_List.size(); k++){
             // maji stejne vysky a sirky nebo je vyska se sirkou stejna a sirka s vyskou stejna ... rotace
@@ -125,7 +126,7 @@ class CWeldingCompany{
       m_Producers = vector<AProducer>();
       m_Customers = vector<ACustomer>();
       m_All_Materials_Info = unordered_map<unsigned, CMaterialInfo>();
-      m_Orders_buffer = queue<pair<COrder, shared_ptr<CPackageInfo>>>();
+      m_Orders_buffer = queue<pair<size_t, shared_ptr<CPackageInfo>>>();
       m_number_of_active_customers = 0;
       m_number_of_workers = 0;
 
@@ -171,8 +172,8 @@ class CWeldingCompany{
         {
           lock_guard<mutex> buffer_lock(m_mutex_wc);
 
-          for(auto& order: orderList->m_List){
-            m_Orders_buffer.push(make_pair(order, pkg_info));
+          for(size_t idx = 0; idx < orderList->m_List.size(); idx++){
+            m_Orders_buffer.push(make_pair(idx, pkg_info));
             m_cv_Orders_buffer_empty.notify_one();
           }
         }
@@ -187,7 +188,7 @@ class CWeldingCompany{
         if(m_number_of_active_customers == 0){
           for (int i = 0; i < m_number_of_workers; i++){
             // dummy light out order has nullptr as customer info
-            m_Orders_buffer.push(make_pair(COrder(0,0,-1), nullptr));  // -1 welding strength means lights out
+            m_Orders_buffer.push(make_pair(0, nullptr)); 
             m_cv_Orders_buffer_empty.notify_one();
           }
         }
@@ -200,11 +201,11 @@ class CWeldingCompany{
         unique_lock<mutex> buffer_lock(m_mutex_wc);
         m_cv_Orders_buffer_empty.wait(buffer_lock, [this](){return !m_Orders_buffer.empty();});
 
-        pair<COrder, shared_ptr<CPackageInfo>> order = m_Orders_buffer.front();
+        pair<size_t, shared_ptr<CPackageInfo>> order = m_Orders_buffer.front();
         m_Orders_buffer.pop();
         
         // lights out
-        if(order.first.m_WeldingStrength == -1){                                             // -1 welding strength means lights out
+        if(order.second == nullptr){                                             
           break;
         }
         //randomZpozdeni();
@@ -212,7 +213,7 @@ class CWeldingCompany{
         APriceList priceList = make_shared<CPriceList>(m_All_Materials_Info[order.second->m_material_id].m_unified_pricelist);
         buffer_lock.unlock();
 
-        seqSolve(priceList, order.first);
+        seqSolve(priceList, order.second->orderList->m_List[order.first]);
 
         {
           lock_guard<mutex> package_lock(m_mutex_wc);
@@ -354,7 +355,7 @@ class CWeldingCompany{
 
     unordered_map<unsigned, CMaterialInfo> m_All_Materials_Info;     // ke kazdemu materialu si drzi optimalni cenik
 
-    queue<pair<COrder, shared_ptr<CPackageInfo>>> m_Orders_buffer;           // shared buffer      
+    queue<pair<size_t, shared_ptr<CPackageInfo>>> m_Orders_buffer;           // shared buffer      
     mutex m_mutex_wc;                                            // controls access to share buffer (critical section)
 
     condition_variable m_cv_Orders_buffer_empty;                 // protects from removing items from an empty buffer
@@ -370,7 +371,7 @@ class CWeldingCompany{
 
 //-------------------------------------------------------------------------------------------------
 #ifndef __PROGTEST__
-/*
+
 int main(){
   using namespace std::placeholders;
   CWeldingCompany test;
@@ -386,5 +387,5 @@ int main(){
   p2->stop();
   return EXIT_SUCCESS;
 }
-*/
+
 #endif /* __PROGTEST__ */
