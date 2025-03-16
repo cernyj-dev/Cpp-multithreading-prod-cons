@@ -33,7 +33,7 @@ void test(CWeldingCompany& test, size_t workers, size_t a_producers, size_t s_pr
     using namespace std::placeholders;
     std::vector<AProducer> producers;
     std::vector<AProducerAsync> producers_async;
-  
+    printf("1\n");
     for(size_t i = 0; i < a_producers; i++){
       AProducerAsync a = std::make_shared<CProducerAsync>(std::bind(&CWeldingCompany::addPriceList, &test, _1, _2));
       producers_async.push_back(a);
@@ -64,7 +64,7 @@ void test(CWeldingCompany& test, size_t workers, size_t a_producers, size_t s_pr
 int main(){
   CWeldingCompany brambor;
   cout << "Test 1" << endl;
-  test(brambor, 2, 4, 10, 2);
-
+  test(brambor, 1, 1, 10, 1);
+  cout << "Test 2" << endl;
   return EXIT_SUCCESS;
 }
