@@ -55,9 +55,9 @@ class CMaterialInfo{
 
     vector<APriceList> m_pricelists; // <- postupne sem budu strkat ceniky dodavatelu
     CPriceList m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
-    set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
+    unordered_set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
 
-    CMaterialInfo(): m_has_all_pricelists(false), m_is_unified_calculated(false), m_material_id(0), m_pricelists(vector<APriceList>()), m_unified_pricelist(0), m_producers_received(set<AProducer>())
+    CMaterialInfo(): m_has_all_pricelists(false), m_is_unified_calculated(false), m_material_id(0), m_pricelists(vector<APriceList>()), m_unified_pricelist(0), m_producers_received(unordered_set<AProducer>())
     {}
     
 
@@ -160,7 +160,7 @@ class CWeldingCompany{
           material_lock.lock();
 
           // pockej na to, nez budes mit vsechny ceniky
-          m_cv_Complete_CPriceList.wait(material_lock, [this, orderList](){return m_All_Materials_Info[orderList->m_MaterialID].m_has_all_pricelists;});
+          m_cv_Complete_CPriceList.wait(material_lock, [&](){return m_All_Materials_Info[orderList->m_MaterialID].m_has_all_pricelists;});
           
           m_All_Materials_Info[orderList->m_MaterialID].unifyPriceList();
         }
@@ -174,7 +174,7 @@ class CWeldingCompany{
 
           for(size_t idx = 0; idx < orderList->m_List.size(); idx++){
             m_Orders_buffer.push(make_pair(idx, pkg_info));
-            m_cv_Orders_buffer_empty.notify_one();
+            m_cv_Orders_buffer_empty.notify_one(); // CHANGE... NOTIFY ONE TO NOTIFY ALL
           }
         }
       }
@@ -189,7 +189,7 @@ class CWeldingCompany{
           for (int i = 0; i < m_number_of_workers; i++){
             // dummy light out order has nullptr as customer info
             m_Orders_buffer.push(make_pair(0, nullptr)); 
-            m_cv_Orders_buffer_empty.notify_one();
+            m_cv_Orders_buffer_empty.notify_one(); // CHANGE... NOTIFY ONE TO NOTIFY ALL - didnt help, reverting it back
           }
         }
       }
@@ -199,7 +199,7 @@ class CWeldingCompany{
     void workerFnc(){
       while(true){
         unique_lock<mutex> buffer_lock(m_mutex_wc);
-        m_cv_Orders_buffer_empty.wait(buffer_lock, [this](){return !m_Orders_buffer.empty();});
+        m_cv_Orders_buffer_empty.wait(buffer_lock, [&](){return !m_Orders_buffer.empty();});
 
         pair<size_t, shared_ptr<CPackageInfo>> order = m_Orders_buffer.front();
         m_Orders_buffer.pop();
@@ -301,7 +301,7 @@ class CWeldingCompany{
 
         if(m_All_Materials_Info[priceList->m_MaterialID].m_producers_received.size() == m_Producers.size()){
           m_All_Materials_Info[priceList->m_MaterialID].m_has_all_pricelists = true;
-          m_cv_Complete_CPriceList.notify_all();
+          m_cv_Complete_CPriceList.notify_all();                                                                
         }
       }
       // pokud zaznam nalezen byl
@@ -315,7 +315,7 @@ class CWeldingCompany{
           if(it->second.m_producers_received.size() == m_Producers.size()){
             // tak probud catchery, kteri cekaji na vsechny pricelisty
             it->second.m_has_all_pricelists = true; // <- odemceni te podminky
-            m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?
+            m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?  // CHANGE... NOTIFY ALL TO NOTIFY ONE
           }
         }
       }
