@@ -64,7 +64,7 @@ void test(CWeldingCompany& test, size_t workers, size_t a_producers, size_t s_pr
 int main(){
   CWeldingCompany brambor;
   cout << "Test 1" << endl;
-  test(brambor, 1, 1, 10, 1);
+  test(brambor, 2, 4, 10, 2);
 
   return EXIT_SUCCESS;
 }

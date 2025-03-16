@@ -39,16 +39,6 @@ inline void randomZpozdeni(){
 #endif */
 
 
-// poznamky:
-
-// ruzny druhy materialu issue maybe
-// jde vyskrnout ten shared ptr na materialInfo a proste prestavet ten wrapper trochu
-
-// mam shared resource - ten read musim zamknout taky -  hlavne pokud ten shared resource se muze menit v case
-
-
-
-
 
 
 // printf("Producer %d: lights out\n", tid);
@@ -64,17 +54,12 @@ class CMaterialInfo{
     //mutex m_mutex_mi; 
 
     vector<APriceList> m_pricelists; // <- postupne sem budu strkat ceniky dodavatelu
-    vector<CProd> m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
+    CPriceList m_unified_pricelist; // <- jakmile mam vsechny ceniky, tak do tohodle dam ten unifikovany
     set<AProducer> m_producers_received; // <- abych vedel, jestli uz jsem od kazdeho dostal cenik
 
-    CMaterialInfo(){
-      m_material_id = 0;
-      m_has_all_pricelists = false;
-      m_is_unified_calculated = false;
-      m_pricelists = vector<APriceList>();
-      m_unified_pricelist = vector<CProd>();
-      m_producers_received = set<AProducer>();
-    }
+    CMaterialInfo(): m_has_all_pricelists(false), m_is_unified_calculated(false), m_material_id(0), m_pricelists(vector<APriceList>()), m_unified_pricelist(0), m_producers_received(set<AProducer>())
+    {}
+    
 
     void unifyPriceList(){
       //lock_guard<mutex> lg(m_mutex_mi);
@@ -88,18 +73,18 @@ class CMaterialInfo{
       for(size_t i = 0; i < m_pricelists.size(); i++){
         for(size_t j = 0; j < m_pricelists[i]->m_List.size(); j++){
           // projedu cely pricelist a pokud uz mam stejne rozmery, tak si necham tu s mensi cenou
-          for(size_t k = 0; k < m_unified_pricelist.size(); k++){
+          for(size_t k = 0; k < m_unified_pricelist.m_List.size(); k++){
             // maji stejne vysky a sirky nebo je vyska se sirkou stejna a sirka s vyskou stejna ... rotace
-            if((m_unified_pricelist[k].m_W == m_pricelists[i]->m_List[j].m_W && m_unified_pricelist[k].m_H == m_pricelists[i]->m_List[j].m_H) || 
-              (m_unified_pricelist[k].m_W == m_pricelists[i]->m_List[j].m_H && m_unified_pricelist[k].m_H == m_pricelists[i]->m_List[j].m_W)){
+            if((m_unified_pricelist.m_List[k].m_W == m_pricelists[i]->m_List[j].m_W && m_unified_pricelist.m_List[k].m_H == m_pricelists[i]->m_List[j].m_H) || 
+              (m_unified_pricelist.m_List[k].m_W == m_pricelists[i]->m_List[j].m_H && m_unified_pricelist.m_List[k].m_H == m_pricelists[i]->m_List[j].m_W)){
               duplicity_found = true;
-              m_unified_pricelist[k].m_Cost = min(m_unified_pricelist[k].m_Cost, m_pricelists[i]->m_List[j].m_Cost);
+              m_unified_pricelist.m_List[k].m_Cost = min(m_unified_pricelist.m_List[k].m_Cost, m_pricelists[i]->m_List[j].m_Cost);
               break;
             }
           }
           // pokud jsem projel cely unified_pricelist a nenasel jsem tam tenhle CProd, tak ho tam pridam ... nema tam duplicitu
           if(duplicity_found == false){
-            m_unified_pricelist.push_back(m_pricelists[i]->m_List[j]);
+            m_unified_pricelist.add(m_pricelists[i]->m_List[j]);
           }
         }
       }
@@ -118,14 +103,14 @@ class CMaterialInfo{
     
 class CPackageInfo{
   public:
-    CPackageInfo(ACustomer cust, AOrderList orderList, const unsigned& material_id): cust(cust), orderList(orderList), m_material_id(material_id){
-      m_number_of_all_orders = orderList->m_List.size();
-    }
+    CPackageInfo(ACustomer cust, AOrderList orderList, const unsigned& material_id, const unsigned& number_of_all_orders): 
+      cust(cust), orderList(orderList), m_material_id(material_id), m_number_of_completed_orders(0) ,m_number_of_all_orders(number_of_all_orders)
+    {}
 
     ACustomer cust;
     AOrderList orderList;
     unsigned m_material_id;
-    unsigned m_number_of_completed_orders = 0;
+    unsigned m_number_of_completed_orders;
     unsigned m_number_of_all_orders;
 
   };
@@ -183,7 +168,7 @@ class CWeldingCompany{
         
 
 
-        CPackageInfo pkg_info(cust, orderList, orderList->m_MaterialID);
+        CPackageInfo pkg_info(cust, orderList, orderList->m_MaterialID, orderList->m_List.size());
         {
           lock_guard<mutex> buffer_lock(m_mutex_wc);
 
@@ -203,7 +188,7 @@ class CWeldingCompany{
         if(m_number_of_active_customers == 0){
           for (int i = 0; i < m_number_of_workers; i++){
             // dummy light out order has nullptr as customer info
-            m_Orders_buffer.push(make_pair(COrder(0,0,-1), CPackageInfo(nullptr, nullptr, 0)));  // -1 welding strength means lights out
+            m_Orders_buffer.push(make_pair(COrder(0,0,-1), CPackageInfo(nullptr, nullptr, 0, 0)));  // -1 welding strength means lights out
             m_cv_Orders_buffer_empty.notify_one();
           }
         }
@@ -303,7 +288,6 @@ class CWeldingCompany{
 
     void addPriceList(AProducer prod, APriceList priceList){
       lock_guard<mutex> lg(m_mutex_wc);
-      bool producer_recorded = false;
       // neni ten producer jeste zaznamenan?
       auto it = m_All_Materials_Info.find(priceList->m_MaterialID);
       // nebyl nalezen zadny zaznam o soucasnem materialu                  
@@ -312,7 +296,11 @@ class CWeldingCompany{
         m_All_Materials_Info[priceList->m_MaterialID].m_material_id = priceList->m_MaterialID;
         m_All_Materials_Info[priceList->m_MaterialID].m_pricelists.push_back(priceList);
         m_All_Materials_Info[priceList->m_MaterialID].m_producers_received.insert(prod);
-        producer_recorded = true;
+
+        if(m_All_Materials_Info[priceList->m_MaterialID].m_producers_received.size() == m_Producers.size()){
+          m_All_Materials_Info[priceList->m_MaterialID].m_has_all_pricelists = true;
+          m_cv_Complete_CPriceList.notify_all();
+        }
       }
       // pokud zaznam nalezen byl
       else{
@@ -320,14 +308,14 @@ class CWeldingCompany{
         if(it->second.m_producers_received.find(prod) == it->second.m_producers_received.end()){ 
           it->second.m_pricelists.push_back(priceList);
           it->second.m_producers_received.insert(prod);
-          producer_recorded = true;
+
+          // dostal jsem uz vsechny pricelisty pri pridani posledniho producenta?
+          if(it->second.m_producers_received.size() == m_Producers.size()){
+            // tak probud catchery, kteri cekaji na vsechny pricelisty
+            it->second.m_has_all_pricelists = true; // <- odemceni te podminky
+            m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?
+          }
         }
-      }
-      // dostal jsem uz vsechny pricelisty pri pridani posledniho producenta?
-      if(producer_recorded && it->second.m_producers_received.size() == m_Producers.size()){
-        // tak probud catchery, kteri cekaji na vsechny pricelisty
-        it->second.m_has_all_pricelists = true; // <- odemceni te podminky
-        m_cv_Complete_CPriceList.notify_all();  // tot otazka, protoze pravdepodobne na to bude spat prave jeden v jednu chvili?
       }
     }
     
@@ -381,7 +369,7 @@ class CWeldingCompany{
 
 //-------------------------------------------------------------------------------------------------
 #ifndef __PROGTEST__
-
+/*
 int main(){
   using namespace std::placeholders;
   CWeldingCompany test;
@@ -397,5 +385,5 @@ int main(){
   p2->stop();
   return EXIT_SUCCESS;
 }
-
+*/
 #endif /* __PROGTEST__ */
