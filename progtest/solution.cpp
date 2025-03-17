@@ -145,7 +145,7 @@ class CWeldingCompany{
           break;
         }
 
-        //randomZpozdeni();
+        //randomZpozdeni(); // !!!!
         
         unique_lock<mutex> material_lock(m_mutex_wc);
         // mam vsechny pricelisty?
@@ -163,7 +163,7 @@ class CWeldingCompany{
           
         }
         m_cv_Complete_CPriceList.wait(material_lock, [&](){return m_All_Materials_Info[orderList->m_MaterialID].m_has_all_pricelists;});
-        
+        //randomZpozdeni(); // !!!!
         m_All_Materials_Info[orderList->m_MaterialID].unifyPriceList();
 
 
@@ -373,7 +373,7 @@ class CWeldingCompany{
 
 //-------------------------------------------------------------------------------------------------
 #ifndef __PROGTEST__
-/*
+
 int main(){
   using namespace std::placeholders;
   CWeldingCompany test;
@@ -389,5 +389,5 @@ int main(){
   p2->stop();
   return EXIT_SUCCESS;
 }
-*/
+
 #endif /* __PROGTEST__ */
