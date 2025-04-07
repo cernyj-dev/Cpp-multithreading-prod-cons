@@ -1,1 +1,1 @@
-#Informace o úloze#
+# Informace o úloze #
